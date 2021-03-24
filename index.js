@@ -8,13 +8,9 @@ const app = express();
 var SlackBot = require("slackbots");
 var he = require("he");
 
-var tokenNSWF =
-  "xoxp-681481508342-679375544437-804111423093-ead03752772f115e6527e957e6f859e6";
-var botTokenNSWF = "xoxb-681481508342-803639185668-VwzdN7MJrolQF0dtOompdOqf";
-
 var tokenDJM =
-  "xoxp-308649945847-306944958640-807803253286-354905fd2785bf270dad2a72208acd71";
-var botTokenDJM = "xoxb-308649945847-802779764949-sSufXlJzC4GFNzGsEPg6sAQK";
+  "xoxp-308649945847-306944958640-1893564969250-f602edbd20531003683a86f091f76041";
+var botTokenDJM = "xoxb-308649945847-1893768414947-lMEtyt8p2Vq9yovWct7QHFOL";
 
 var token = tokenDJM;
 var botToken = botTokenDJM;
@@ -357,4 +353,4 @@ function randomIntFromInterval(min, max) {
   return Math.floor(Math.random() * (max - min + 1) + min);
 }
 
-const server = app.listen(80); // port
+const server = app.listen(process.env.PORT || 80); // port
