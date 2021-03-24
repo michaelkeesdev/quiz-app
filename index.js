@@ -1,29 +1,70 @@
-require("dotenv").config(); // To grab env vers from the .env file
-
-const express = require("express");
+if (process.env.NODE_ENV !== "production") {
+  require("dotenv").config();
+}
 const bodyParser = require("body-parser");
 const axios = require("axios");
 const qs = require("qs");
-const app = express();
-var SlackBot = require("slackbots");
 var he = require("he");
+const express = require("express");
+const port = process.env.PORT;
+const app = express();
 
-var tokenDJM =
-  "xoxp-308649945847-306944958640-1886843355190-cd47c00ff3ca9a2c08e9c4083740f590";
-var botTokenDJM = "xoxb-308649945847-1893768414947-fl1XYCfeCchWVM5dHQkQU7Bt";
+const { createEventAdapter } = require("@slack/events-api");
+const { createMessageAdapter } = require("@slack/interactive-messages");
+const slackEvents = createEventAdapter(process.env.SLACK_SIGNING_SECRET);
+const slackInteractions = createMessageAdapter(
+  process.env.SLACK_SIGNING_SECRET
+);
+const { WebClient } = require("@slack/web-api");
+const token = process.env.SLACK_BOT_TOKEN;
+const web = new WebClient(token);
 
-var token = tokenDJM;
-var botToken = botTokenDJM;
+app.use("/events", slackEvents.requestListener());
 
-var bot = new SlackBot({
-  token: botToken,
-  name: "Erik",
+/* slackEvents.on("app_mention", (event) => {
+  console.log(
+    `Received an app_mention event from user ${event.user} in channel ${event.channel}`
+  );
+}); */
+
+slackEvents.on("message", async (event) => {
+  await checkActions(event);
 });
 
-var params = {
-  icon_emoji: ":jerre:",
+// All errors in listeners are caught here. If this weren't caught, the program would terminate.
+slackEvents.on("error", (error) => {
+  console.log(`error: ${error}`);
+});
+
+app.use("/interactions", slackInteractions.requestListener());
+
+slackInteractions.action({ type: "button" }, async (payload, respond) => {
+  logMsg("Incoming Interaction:", payload);
+
+  if (payload && payload.type) {
+    await checkActions(payload);
+  }
+  if (payload && payload.payload) {
+    const interactiveMessage = JSON.parse(payload.payload);
+    await checkActions(interactiveMessage);
+  }
+});
+
+const rawBodyBuffer = (req, res, buf, encoding) => {
+  if (buf && buf.length) {
+    req.rawBody = buf.toString(encoding || "utf8");
+  }
 };
-const QUESTION_TIME = 10000; // 15 Seconds - 15.000 ms
+
+app.use(bodyParser.urlencoded({ verify: rawBodyBuffer, extended: true }));
+app.use(bodyParser.json({ verify: rawBodyBuffer }));
+
+app.listen(port, function () {
+  console.log(`Listening on ${port}`);
+});
+
+var params = {};
+const QUESTION_TIME = 15000; // 15 Seconds - 15.000 ms
 
 var quiz = {
   rounds: [],
@@ -36,34 +77,48 @@ var channel;
 
 var timer;
 
-// The next two lines will be modified later
-const rawBodyBuffer = (req, res, buf, encoding) => {
-  if (buf && buf.length) {
-    req.rawBody = buf.toString(encoding || "utf8");
+async function updateMessage(message, ts, params) {
+  const CHID = channel && channel.id ? channel.id : channel;
+  try {
+    await web.chat.update({
+      channel: CHID,
+      ts: ts,
+      text: message,
+      ...params,
+    });
+  } catch (error) {
+    console.log(error);
   }
-};
+}
 
-app.use(bodyParser.urlencoded({ verify: rawBodyBuffer, extended: true }));
-app.use(bodyParser.json({ verify: rawBodyBuffer }));
+async function postMessage(message, params) {
+  const CHID = channel && channel.id ? channel.id : channel;
 
-bot.on("start", function () {
-  //postMessage(`Let's start`, params);
-});
-
-bot.on("message", async (data) => {
-  await checkActions(data);
-});
-
-app.post("/actions", async (req, res) => {
-  const payload = req.body;
-  if (payload && payload.type) {
-    await checkActions(payload);
+  try {
+    await web.chat.postMessage({
+      channel: CHID,
+      text: message,
+      ...params,
+    });
+  } catch (error) {
+    console.log(error);
   }
-  if (payload && payload.payload) {
-    const interactiveMessage = JSON.parse(payload.payload);
-    await checkActions(interactiveMessage);
+}
+
+async function postMessageEphemeral(userId, message, params) {
+  const CHID = channel && channel.id ? channel.id : channel;
+
+  try {
+    await web.chat.postEphemeral({
+      channel: CHID,
+      user: userId,
+      text: message,
+      ...params,
+    });
+  } catch (error) {
+    console.log(error);
   }
-});
+}
 
 async function checkActions(payload) {
   if (payload && payload.channel && (!channel || channel === "")) {
@@ -71,7 +126,7 @@ async function checkActions(payload) {
     logMsg("CHANNEL state", channel);
   }
 
-  //logMsg("Incoming MSG:" , payload.text);
+  logMsg("Incoming MSG:", payload.text);
 
   if (payload.text && payload.text.match(/<(.*)> score/gi)) {
     await postScore();
@@ -107,7 +162,8 @@ async function checkActions(payload) {
     }
   } else {
     // BOT: Start question
-    if (payload.subtype === "bot_message" && payload.username === "Quiz") {
+    console.log("bot_message", payload.subtype);
+    if (payload.subtype === "bot_message" && payload.username === "Erik") {
       if (payload.text && payload.text.startsWith("Q:")) {
         question["ts"] = payload.ts;
         await startTimer();
@@ -126,9 +182,7 @@ async function checkActions(payload) {
 
       if (question["participations"].includes(payload.user.id)) {
         logMsg(`USER: ${payload.user.id} has already answerred`);
-        const CHID = channel && channel.id ? channel.id : channel;
-        bot.postEphemeral(
-          CHID,
+        postMessageEphemeral(
           payload.user.id,
           `You've already answered! 1 try each`,
           params
@@ -159,8 +213,7 @@ async function checkActions(payload) {
           logMsg(
             `INCORRECT ANSWER: ${payload.user.id} - ${payload.actions[0].value}`
           );
-          const CHID = channel && channel.id ? channel.id : channel;
-          bot.postEphemeral(CHID, payload.user.id, `Incorrect!`, params);
+          postMessageEphemeral(payload.user.id, `Incorrect!`, params);
         }
       }
     }
@@ -216,10 +269,7 @@ async function nextQuestion() {
       await askQuestion();
     } else {
       round["active"] = false;
-      await postMessage(
-        "Thanks for playing. www.michaelkees.com :kissing_heart:",
-        params
-      );
+      await postMessage("Het is gebeurd!", params);
       await postScore();
       curRound++;
       curQuestion = 0;
@@ -267,7 +317,8 @@ function mapOptions(question) {
 
 async function startTimer() {
   if (round && question) {
-    timer = setInterval(() => {
+    timer = setInterval(async () => {
+      logMsg("interval");
       let now = new Date().getTime();
       let t = question["endTime"] - now;
 
@@ -275,9 +326,9 @@ async function startTimer() {
         //console.log("time", t);
         let secs = Math.floor((t % (1000 * 60)) / 1000);
         /* var okParams = {
-                    ...params,
-                    attachments: question["qParams"] ? question["qParams"].attachments : [],
-                } */
+                      ...params,
+                      attachments: question["qParams"] ? question["qParams"].attachments : [],
+                  } */
 
         if (t >= 4000 && t <= 5000) {
           postMessage("5 secs left", params);
@@ -323,20 +374,6 @@ function addPoint(userId) {
   }
 }
 
-async function updateMessage(message, ts, params) {
-  const CHID = channel && channel.id ? channel.id : channel;
-  return bot.updateMessage(CHID, ts, message, params).catch((err) => {
-    console.log(err);
-  });
-}
-
-async function postMessage(message, params) {
-  const CHID = channel && channel.id ? channel.id : channel;
-  return bot.postMessage(CHID, message, params).catch((err) => {
-    console.log(err);
-  });
-}
-
 function shuffleArray(array) {
   for (let i = array.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -352,5 +389,3 @@ function randomIntFromInterval(min, max) {
   // min and max included
   return Math.floor(Math.random() * (max - min + 1) + min);
 }
-
-const server = app.listen(process.env.PORT || 80); // port
