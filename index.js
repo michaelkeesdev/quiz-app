@@ -9,8 +9,8 @@ var SlackBot = require("slackbots");
 var he = require("he");
 
 var tokenDJM =
-  "xoxp-308649945847-306944958640-1906209311521-d7bb6a2fa78bd2864ac804bdadd3edd6";
-var botTokenDJM = "xoxb-308649945847-1893768414947-Qbr9FQPnmn14WAfYfbKR1JC6";
+  "xoxp-308649945847-306944958640-1893618737138-2520a1bfd4d2663e0e6258c4582bbbc4";
+var botTokenDJM = "xoxb-308649945847-1893768414947-A6m3U1hN3QOuh53CtSOe7ivs";
 
 var token = tokenDJM;
 var botToken = botTokenDJM;
