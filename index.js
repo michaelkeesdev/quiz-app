@@ -17,7 +17,7 @@ var botToken = botTokenDJM;
 
 var bot = new SlackBot({
   token: botToken,
-  name: "Quiz",
+  name: "Erik",
 });
 
 var params = {
